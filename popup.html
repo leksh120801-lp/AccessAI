@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+
+  <h2>Dyslexia Support Tool</h2>
+
+  <div class="section">
+    <button id="fontBtn">Toggle Dyslexia Font</button>
+    <button id="spacingBtn">Toggle Line Spacing</button>
+  </div>
+  <button id="letterSpacingBtn">Toggle Letter Spacing</button>
+
+
+  <div class="section">
+    <label>Adjust Font Size</label>
+    <input type="range" id="fontSlider" min="14" max="32" value="16">
+  </div>
+<button id="readAloudBtn">Read Page Aloud</button>
+
+  <div class="section">
+    <label>Background Overlay</label>
+    <select id="colorOverlay">
+      <option value="">Default</option>
+      <option value="#fdf6e3">Cream</option>
+      <option value="#e6f0ff">Light Blue</option>
+      <option value="#f3e6ff">Light Purple</option>
+      <option value="#e6ffe6">Light Green</option>
+    </select>
+  </div>
+
+  <div class="section">
+    <button id="focusBtn">Toggle Focus Mode</button>
+  </div>
+  <button id="wordFocusBtn">Toggle Word Focus</button>
+
+
+  <div class="section">
+    <button id="summaryBtn">Summarize Page</button>
+    <div id="summaryOutput"></div>
+  </div>
+  <div class="section">
+  <button id="darkModeToggle">Toggle Dark Mode</button>
+  <button id="resetBtn">Reset All Settings</button>
+</div>
+
+
+
+  <script src="popup.js"></script>
+</body>
+</html>
