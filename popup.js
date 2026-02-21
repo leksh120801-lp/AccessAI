@@ -257,43 +257,38 @@ if (focusBtn) {
 }
 
 document.getElementById("summaryBtn").addEventListener("click", async () => {
-  
-  const tab = await getActiveTab(); 
+  const tab = await getActiveTab();
   const outputDiv = document.getElementById("summaryOutput");
-  
+
   outputDiv.innerText = "Summarizing with Gemini AI...";
 
   chrome.scripting.executeScript(
     {
-      target: { tabId: tab.id }, // Now 'tab' is defined and this won't crash
-      func: () => {
-        return document.body.innerText.slice(0, 2000); 
-      }
+      target: { tabId: tab.id },
+      func: () => document.body.innerText.slice(0, 3000)
     },
-    async (results) => {
-      const pageText = results[0]?.result;
+    (results) => {
+      const pageText = results?.[0]?.result;
+
       if (!pageText) {
-        outputDiv.innerText = "No text found on page.";
+        outputDiv.innerText = "No readable text found.";
         return;
       }
 
-      // Send message to background.js
-      chrome.runtime.sendMessage({ action: "summarize", text: pageText }, (response) => {
-        if (chrome.runtime.lastError) {
-          outputDiv.innerText = "Error: Background script not found.";
-          return;
-        }
-        
-        if (response && response.result) {
+      chrome.runtime.sendMessage(
+        { action: "summarize", text: pageText },
+        (response) => {
+          if (!response || !response.result) {
+            outputDiv.innerText = "AI returned empty response.";
+            return;
+          }
+
           outputDiv.innerText = response.result;
-        } else {
-          outputDiv.innerText = "AI returned an empty response.";
         }
-      });
+      );
     }
   );
 });
-
 
 
 
