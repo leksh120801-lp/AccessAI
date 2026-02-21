@@ -4,7 +4,117 @@ async function getActiveTab() {
   return tab;
 }
 
+const GEMINI_API_KEY = "AIzaSyCGJj5SPChskrhPiRdASErHqQ_wi_Qt6qI";
+const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
 
+async function callGemini(prompt, retryCount = 0) {
+  try {
+    const response = await fetch(GEMINI_API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+    });
+
+    if (response.status === 429 && retryCount < 2) {
+       console.log("Rate limited. Waiting 2 seconds to retry...");
+       await new Promise(res => setTimeout(res, 2000)); // Wait 2 seconds
+       return callGemini(prompt, retryCount + 1); // Try again
+    }
+
+    if (!response.ok) {
+      const errorJson = await response.json();
+      return `Error ${response.status}: ${errorJson.error?.message || "Something went wrong"}`;
+    }
+
+    const data = await response.json();
+    return data.candidates[0].content.parts[0].text;
+
+  } catch (error) {
+    return "Connection Error. Check your internet.";
+  }
+}
+
+document.getElementById("grammarBtn").addEventListener("click", async () => {
+  const tab = await getActiveTab();
+  const outputDiv = document.getElementById("grammarOutput");
+  
+  outputDiv.innerText = "Checking your text...";
+
+  chrome.scripting.executeScript(
+    {
+      target: { tabId: tab.id },
+      func: () => {
+        // You can change this to grab specific text or the whole page
+        return window.getSelection().toString() || document.body.innerText.slice(0, 1000);
+      }
+    },
+    async (results) => {
+      const textToQuery = results[0]?.result;
+      if (!textToQuery || textToQuery.trim() === "") {
+        outputDiv.innerText = "Please highlight some text to check.";
+        return;
+      }
+
+      // Prompt optimized for Dyslexia: Fixes words AND explains them simply
+      const grammarPrompt = `Act as a supportive proofreader for someone with dyslexia. 
+      1. Correct the spelling and grammar of the following text.
+      2. If you find homophone errors (like their/there), explain the difference simply.
+      3. Provide the corrected text first, then a very short list of "Friendly Tips" for the mistakes found.
+      
+      Text to check: "${textToQuery}"`;
+      
+      const correctedText = await callGemini(grammarPrompt);
+      outputDiv.innerText = correctedText;
+    }
+  );
+});
+
+document.getElementById("declutterBtn").addEventListener("click", async () => {
+  const tab = await getActiveTab();
+
+  chrome.scripting.executeScript({
+    target: { tabId: tab.id },
+    func: () => {
+      // 1. Check if we already applied the declutter styles
+      const styleId = "dyslexia-declutter-style";
+      const existingStyle = document.getElementById(styleId);
+
+      if (existingStyle) {
+        // If it exists, remove it to show the original page again
+        existingStyle.remove();
+        console.log("Declutter Mode Deactivated");
+        return;
+      }
+
+      // 2. Define which "noisy" parts of a website we want to hide
+      const selectorsToHide = [
+        "aside",           // Sidebars
+        "footer",          // Usually full of links
+        ".sidebar",        // Common class for sidebars
+        "#sidebar",        // Common ID for sidebars
+        ".ad", ".ads",     // Common ad classes
+        ".social-share",   // Floating social media buttons
+        "iframe[id*='google_ads']", // Google Ads
+        ".newsletter-popup", // Annoying popups
+        ".cookie-banner"   // Cookie notices
+      ];
+
+      // 3. Create a style tag and inject it into the page
+      const style = document.createElement("style");
+      style.id = styleId;
+      style.innerHTML = `
+        ${selectorsToHide.join(", ")} {
+          display: none !important;
+          visibility: hidden !important;
+          pointer-events: none !important;
+        }
+      `;
+
+      document.head.appendChild(style);
+      console.log("Declutter Mode Activated");
+    }
+  });
+});
 document.getElementById("fontBtn").addEventListener("click", async () => {
   const tab = await getActiveTab();
 
@@ -82,6 +192,125 @@ document.getElementById("fontSlider").addEventListener("input", async (e) => {
 });
 
 
+const focusBtn = document.getElementById("focusBtn");
+
+if (focusBtn) {
+  focusBtn.addEventListener("click", async () => {
+    const tab = await getActiveTab();
+    
+    // Safety check: get color, default to yellow if dropdown is missing
+    const colorPicker = document.getElementById("rulerColor");
+    const selectedColor = colorPicker ? colorPicker.value : "rgba(255, 255, 0, 0.4)";
+
+    chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: (rulerColor) => {
+        // --- 1. TOGGLE OFF ---
+        if (window.focusModeActive) {
+          document.removeEventListener("mousemove", window.focusMoveHandler);
+          window.focusOverlayTop?.remove();
+          window.focusOverlayBottom?.remove();
+          window.focusRulerLine?.remove();
+          window.focusModeActive = false;
+          return;
+        }
+
+        // --- 2. CREATE ELEMENTS ---
+        const overlayTop = document.createElement("div");
+        const overlayBottom = document.createElement("div");
+        const rulerLine = document.createElement("div");
+
+        // Style for the dark dimmers
+        const dimmerStyle = {
+          position: "fixed",
+          left: "0",
+          width: "100%",
+          background: "rgba(0,0,0,0.5)",
+          pointerEvents: "none",
+          zIndex: "999997"
+        };
+
+        Object.assign(overlayTop.style, dimmerStyle);
+        Object.assign(overlayBottom.style, dimmerStyle);
+        
+        // Style for the colored ruler
+        Object.assign(rulerLine.style, {
+          position: "fixed",
+          left: "0",
+          width: "100%",
+          height: "40px",
+          backgroundColor: rulerColor,
+          pointerEvents: "none",
+          zIndex: "999998",
+          borderTop: "1px solid rgba(255,255,255,0.2)",
+          borderBottom: "1px solid rgba(255,255,255,0.2)"
+        });
+
+        document.body.appendChild(overlayTop);
+        document.body.appendChild(overlayBottom);
+        document.body.appendChild(rulerLine);
+
+        // --- 3. MOVEMENT LOGIC ---
+        window.focusMoveHandler = (e) => {
+          const y = e.clientY;
+          const halfRuler = 20; // Half of the 40px height
+
+          // Fix: Top dimmer starts at 0 and ends at top of ruler
+          overlayTop.style.top = "0";
+          overlayTop.style.height = (y - halfRuler) + "px";
+
+          // Fix: Ruler centers on mouse
+          rulerLine.style.top = (y - halfRuler) + "px";
+
+          // Fix: Bottom dimmer starts at bottom of ruler and fills screen
+          overlayBottom.style.top = (y + halfRuler) + "px";
+          overlayBottom.style.height = (window.innerHeight - (y + halfRuler)) + "px";
+        };
+
+        document.addEventListener("mousemove", window.focusMoveHandler);
+        
+        // Save references for cleanup
+        window.focusOverlayTop = overlayTop;
+        window.focusOverlayBottom = overlayBottom;
+        window.focusRulerLine = rulerLine;
+        window.focusModeActive = true;
+      },
+      args: [selectedColor]
+    });
+  });
+}
+document.getElementById("summaryBtn").addEventListener("click", async () => {
+  const tab = await getActiveTab();
+  const outputDiv = document.getElementById("summaryOutput");
+  
+  outputDiv.innerText = "Summarizing with Gemini AI...";
+
+  chrome.scripting.executeScript(
+    {
+      target: { tabId: tab.id },
+      func: () => {
+        // Grabs more text for better context
+        return document.body.innerText.slice(0, 2000); 
+      }
+    },
+    async (results) => {
+      const pageText = results[0]?.result;
+      if (!pageText) {
+        outputDiv.innerText = "No text found on page.";
+        return;
+      }
+
+      // Build the prompt for Gemini
+      const aiPrompt = `Please provide a simple, dyslexia-friendly summary of the following text using short sentences and bullet points:\n\n${pageText}`;
+      
+      const aiSummary = await callGemini(aiPrompt);
+      outputDiv.innerText = aiSummary;
+    }
+  );
+});
+document.getElementById("darkModeToggle").addEventListener("click", () => {
+  document.body.classList.toggle("dark-mode");
+});
 document.getElementById("colorOverlay").addEventListener("change", async (e) => {
   const tab = await getActiveTab();
   const color = e.target.value;
@@ -117,105 +346,46 @@ document.getElementById("colorOverlay").addEventListener("change", async (e) => 
   });
 });
 
-
-document.getElementById("focusBtn").addEventListener("click", async () => {
-  const tab = await getActiveTab();
-
-  chrome.scripting.executeScript({
-    target: { tabId: tab.id },
-    func: () => {
-      if (window.focusModeActive) {
-        document.removeEventListener("mousemove", window.focusMoveHandler);
-        window.focusOverlayTop.remove();
-        window.focusOverlayBottom.remove();
-        window.focusModeActive = false;
-        return;
-      }
-
-      const overlayTop = document.createElement("div");
-      const overlayBottom = document.createElement("div");
-
-      [overlayTop, overlayBottom].forEach(overlay => {
-        overlay.style.position = "fixed";
-        overlay.style.left = "0";
-        overlay.style.width = "100%";
-        overlay.style.background = "rgba(0,0,0,0.4)";
-        overlay.style.pointerEvents = "none";
-        overlay.style.zIndex = "999998";
-        document.body.appendChild(overlay);
-      });
-
-      const bandHeight = 60;
-
-      const moveHandler = (e) => {
-        const y = e.clientY;
-
-        overlayTop.style.top = "0";
-        overlayTop.style.height = (y - bandHeight / 2) + "px";
-
-        overlayBottom.style.top = (y + bandHeight / 2) + "px";
-        overlayBottom.style.height =
-          (window.innerHeight - (y + bandHeight / 2)) + "px";
-      };
-
-      document.addEventListener("mousemove", moveHandler);
-
-      window.focusOverlayTop = overlayTop;
-      window.focusOverlayBottom = overlayBottom;
-      window.focusMoveHandler = moveHandler;
-      window.focusModeActive = true;
-    }
-  });
-});
-
-
-document.getElementById("summaryBtn").addEventListener("click", async () => {
-  const tab = await getActiveTab();
-
-  chrome.scripting.executeScript(
-    {
-      target: { tabId: tab.id },
-      func: () => {
-        const paragraphs = Array.from(document.querySelectorAll("p"))
-          .slice(0, 3)
-          .map(p => p.innerText)
-          .join("\n\n");
-        return paragraphs;
-      }
-    },
-    (results) => {
-      document.getElementById("summaryOutput").innerText =
-        results[0]?.result || "No text found.";
-    }
-  );
-});
-
-document.getElementById("darkModeToggle").addEventListener("click", () => {
-  document.body.classList.toggle("dark-mode");
-});
-
-
 document.getElementById("resetBtn").addEventListener("click", async () => {
   const tab = await getActiveTab();
 
   chrome.scripting.executeScript({
     target: { tabId: tab.id },
     func: () => {
-      document.body.style = "";
-      document.querySelectorAll("#reading-scanner").forEach(e => e.remove());
+      // 1. Remove Super Focus Mode (Dimmers and Ruler)
       if (window.focusModeActive) {
         document.removeEventListener("mousemove", window.focusMoveHandler);
         window.focusOverlayTop?.remove();
         window.focusOverlayBottom?.remove();
+        window.focusRulerLine?.remove();
         window.focusModeActive = false;
       }
+
+      // 2. Remove Declutter Mode
+      document.getElementById("dyslexia-declutter-style")?.remove();
+
+      // 3. Remove Dyslexia Font
+      document.getElementById("dyslexia-font-style")?.remove();
+
+      // 4. Remove Line & Letter Spacing
+      document.getElementById("line-spacing-style")?.remove();
+      document.getElementById("letter-spacing-style")?.remove();
+
+      // 5. Remove Color Overlay (if you have the separate one)
+      document.getElementById("color-overlay-layer")?.remove();
+
+      // 6. Reset basic body styles
+      document.body.style.fontSize = "";
+      document.body.style.lineHeight = "";
+      document.body.style.letterSpacing = "";
     }
   });
 
-
-  document.getElementById("fontSlider").value = 16;
-  document.getElementById("colorOverlay").value = "";
+  // 7. Clear the Popup UI itself
+  document.getElementById("grammarOutput").innerText = "";
   document.getElementById("summaryOutput").innerText = "";
+  document.getElementById("fontSlider").value = 16;
+  document.getElementById("rulerColor").value = "rgba(255, 255, 0, 0.4)";
 });
 document.getElementById("wordFocusBtn").addEventListener("click", async () => {
   const tab = await getActiveTab();

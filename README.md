@@ -9,11 +9,14 @@ A Chrome extension designed to reduce cognitive overload and improve readability
 - Line spacing control
 - Letter spacing option
 - Color overlay customization
-- Dynamic focus reading mode
+- Dynamic super focus reading mode with colored ruler
 - Word-level highlighting
 - Text summarization preview
 - Dark mode (popup)
 - One-click reset
+- Declutter mode
+- AI-Powered page summary 
+- AI grammer checker  
 
 ## Installation
 
