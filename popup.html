@@ -2,6 +2,7 @@
 <html>
 <head>
   <link rel="stylesheet" href="popup.css">
+  
 </head>
 <body>
 
@@ -31,23 +32,43 @@
     </select>
   </div>
 
-  <div class="section">
-    <button id="focusBtn">Toggle Focus Mode</button>
-  </div>
-  <button id="wordFocusBtn">Toggle Word Focus</button>
+<div class="section">
+  <h3>Reading Support</h3>
+  
+  <label for="rulerColor">Choose Highlight Color:</label>
+  <select id="rulerColor">
+    <option value="rgba(255, 255, 0, 0.4)">Yellow (Bright)</option>
+    <option value="rgba(0, 255, 255, 0.3)">Blue (Cool)</option>
+    <option value="rgba(144, 238, 144, 0.4)">Green (Calm)</option>
+    <option value="rgba(255, 182, 193, 0.4)">Pink (Soft)</option>
+    <option value="rgba(253, 246, 227, 0.5)">Cream (Low Stress)</option>
+  </select>
+
+  <button id="focusBtn">Toggle Super Focus Mode</button>
+</div>
+
+<button id="wordFocusBtn">Toggle Word Highlighter</button>
+
+<div class="section">
+  <label for="manualTextInput">Enter text to check:</label>
+  <textarea id="manualTextInput" placeholder="Paste text here or highlight text on the page..." rows="4"></textarea>
+  
+  <button id="grammarBtn">Check Grammar & Spelling</button>
+  <div id="grammarOutput" class="ai-output"></div>
+</div>
 
 
+<div class="section">
+  <button id="declutterBtn">Toggle Declutter Mode</button>
+</div>
   <div class="section">
-    <button id="summaryBtn">Summarize Page</button>
+    <button id="summaryBtn">AI Page Summary</button>
     <div id="summaryOutput"></div>
   </div>
   <div class="section">
   <button id="darkModeToggle">Toggle Dark Mode</button>
   <button id="resetBtn">Reset All Settings</button>
 </div>
-
-
-
   <script src="popup.js"></script>
 </body>
 </html>
