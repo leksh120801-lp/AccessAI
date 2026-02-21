@@ -18,5 +18,8 @@
       "resources": ["fonts/OpenDyslexic-Regular.otf"],
       "matches": ["<all_urls>"]
     }
-  ]
+  ],
+  "background": {
+  "service_worker": "background.js"
+}
 }

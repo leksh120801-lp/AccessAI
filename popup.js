@@ -4,69 +4,45 @@ async function getActiveTab() {
   return tab;
 }
 
-const GEMINI_API_KEY = "GEMNI-API-KEY-HERE";
-const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
-
-async function callGemini(prompt, retryCount = 0) {
-  try {
-    const response = await fetch(GEMINI_API_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
-    });
-
-    if (response.status === 429 && retryCount < 2) {
-       console.log("Rate limited. Waiting 2 seconds to retry...");
-       await new Promise(res => setTimeout(res, 2000)); // Wait 2 seconds
-       return callGemini(prompt, retryCount + 1); // Try again
-    }
-
-    if (!response.ok) {
-      const errorJson = await response.json();
-      return `Error ${response.status}: ${errorJson.error?.message || "Something went wrong"}`;
-    }
-
-    const data = await response.json();
-    return data.candidates[0].content.parts[0].text;
-
-  } catch (error) {
-    return "Connection Error. Check your internet.";
-  }
+// Helper function to keep your code clean
+async function processGrammar(textToQuery, outputDiv) {
+  const grammarPrompt = `Act as a supportive proofreader for someone with dyslexia. 
+  1. Correct the spelling and grammar of the following text.
+  2. If you find homophone errors (like their/there), explain the difference simply.
+  3. Provide the corrected text first, then a very short list of "Friendly Tips" for the mistakes found.
+  
+  Text to check: "${textToQuery}"`;
+  
+  const correctedText = await callGemini(grammarPrompt);
+  outputDiv.innerText = correctedText;
 }
 
-document.getElementById("grammarBtn").addEventListener("click", async () => {
-  const tab = await getActiveTab();
+document.getElementById("grammarBtn").addEventListener("click", () => {
   const outputDiv = document.getElementById("grammarOutput");
-  
-  outputDiv.innerText = "Checking your text...";
+  // 1. Get the text from your manual input box
+  const userInput = document.getElementById("manualTextInput").value;
 
-  chrome.scripting.executeScript(
-    {
-      target: { tabId: tab.id },
-      func: () => {
-        // You can change this to grab specific text or the whole page
-        return window.getSelection().toString() || document.body.innerText.slice(0, 1000);
-      }
-    },
-    async (results) => {
-      const textToQuery = results[0]?.result;
-      if (!textToQuery || textToQuery.trim() === "") {
-        outputDiv.innerText = "Please highlight some text to check.";
-        return;
-      }
+  // 2. Check if the user actually wrote something
+  if (!userInput || userInput.trim() === "") {
+    outputDiv.innerText = "Please type something in the box above first!";
+    return;
+  }
 
-      // Prompt optimized for Dyslexia: Fixes words AND explains them simply
-      const grammarPrompt = `Act as a supportive proofreader for someone with dyslexia. 
-      1. Correct the spelling and grammar of the following text.
-      2. If you find homophone errors (like their/there), explain the difference simply.
-      3. Provide the corrected text first, then a very short list of "Friendly Tips" for the mistakes found.
-      
-      Text to check: "${textToQuery}"`;
-      
-      const correctedText = await callGemini(grammarPrompt);
-      outputDiv.innerText = correctedText;
+  outputDiv.innerText = "Fixing your spelling...";
+
+  // 3. Send the text to the background script
+  chrome.runtime.sendMessage({ 
+    action: "checkGrammar", 
+    text: userInput.trim() 
+  }, (response) => {
+    if (chrome.runtime.lastError) {
+      outputDiv.innerText = "Error connecting to background script.";
+      return;
     }
-  );
+    
+    // 4. Display ONLY the result
+    outputDiv.innerText = response.result;
+  });
 });
 
 document.getElementById("declutterBtn").addEventListener("click", async () => {
@@ -279,17 +255,18 @@ if (focusBtn) {
     });
   });
 }
+
 document.getElementById("summaryBtn").addEventListener("click", async () => {
-  const tab = await getActiveTab();
+  
+  const tab = await getActiveTab(); 
   const outputDiv = document.getElementById("summaryOutput");
   
   outputDiv.innerText = "Summarizing with Gemini AI...";
 
   chrome.scripting.executeScript(
     {
-      target: { tabId: tab.id },
+      target: { tabId: tab.id }, // Now 'tab' is defined and this won't crash
       func: () => {
-        // Grabs more text for better context
         return document.body.innerText.slice(0, 2000); 
       }
     },
@@ -300,14 +277,26 @@ document.getElementById("summaryBtn").addEventListener("click", async () => {
         return;
       }
 
-      // Build the prompt for Gemini
-      const aiPrompt = `Please provide a simple, dyslexia-friendly summary of the following text using short sentences and bullet points:\n\n${pageText}`;
-      
-      const aiSummary = await callGemini(aiPrompt);
-      outputDiv.innerText = aiSummary;
+      // Send message to background.js
+      chrome.runtime.sendMessage({ action: "summarize", text: pageText }, (response) => {
+        if (chrome.runtime.lastError) {
+          outputDiv.innerText = "Error: Background script not found.";
+          return;
+        }
+        
+        if (response && response.result) {
+          outputDiv.innerText = response.result;
+        } else {
+          outputDiv.innerText = "AI returned an empty response.";
+        }
+      });
     }
   );
 });
+
+
+
+
 document.getElementById("darkModeToggle").addEventListener("click", () => {
   document.body.classList.toggle("dark-mode");
 });
